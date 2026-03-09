@@ -4,9 +4,9 @@ from flask import Flask, request
 
 # --- الإعدادات ---
 TELEGRAM_TOKEN = '8703815623:AAHCNxFc6zYLTV6Qgcc0HOmKmVDKqkGjlR4'
-GEMINI_KEY = 'AIzaSyDH7pZmRT1LWc4oDepiOKYF8Q5YXxvU_28'
-# التعديل الجوهري: إضافة -latest كما طلبت جوجل في رسالة الخطأ
-MODEL_NAME = "gemini-1.5-flash-latest"
+# المفتاح الجديد الذي أرسلته
+AI_KEY = 'AIzaSyDQbVmbXjy43DtWQsS6kc5FH9ICSZzc0Sg'
+MODEL_NAME = "gemini-1.5-flash"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 app = Flask(__name__)
@@ -23,8 +23,8 @@ LANG_CONFIG = {
 }
 
 def ask_ai_api(text, lang):
-    # استخدام v1 المستقر مع الموديل الأحدث
-    url = f"https://generativelanguage.googleapis.com/v1/models/{MODEL_NAME}:generateContent?key={GEMINI_KEY}"
+    # عدنا للرابط القياسي الذي سيعمل فوراً مع المفتاح الجديد
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={AI_KEY}"
     
     payload = {
         "contents": [{
@@ -40,7 +40,6 @@ def ask_ai_api(text, lang):
         if response.status_code == 200 and 'candidates' in res_json:
             return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
         
-        # في حال استمرار الخطأ، سنعرض التفاصيل الكاملة
         error_info = res_json.get('error', {})
         return f"❌ خطأ ({response.status_code}): {error_info.get('message', 'خطأ غير معروف')}"
 
@@ -61,7 +60,7 @@ def start(message):
     user_data[uid] = {'lang': 'Arabic', 'count': 0}
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(*[telebot.types.KeyboardButton(l) for l in LANG_CONFIG.keys()])
-    bot.reply_to(message, "🚀 تم تحديث النظام للموديل الأحدث! اختر اللغة:", reply_markup=markup)
+    bot.reply_to(message, "🚀 أهلاً بك! تم تفعيل المفتاح الجديد. اختر لغة التدقيق:", reply_markup=markup)
 
 @bot.message_handler(func=lambda m: m.text in LANG_CONFIG.keys())
 def set_lang(message):
