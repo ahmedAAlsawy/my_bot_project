@@ -26,6 +26,18 @@ LANGUAGES = {
     'Español 🇪🇸': 'Spanish'
 }
 
+# قاموس رسائل التأكيد باللغات المختلفة (التعديل الجديد)
+CONFIRM_MESSAGES = {
+    'Arabic': '✅ تم تفعيل التدقيق للغة العربية. أرسل النص الآن.',
+    'English': '✅ English proofreading activated. Send your text now.',
+    'Russian': '✅ Проверка русского языка активирована. Отправьте текст.',
+    'Hindi': '✅ हिंदी सुधार सक्रिय हो गया है। अपना टेक्स्ट भेजें।',
+    'Chinese': '✅ 中文校对已激活。请发送您的文本。',
+    'Hebrew': '✅ בדיקת עברית הופעלה. שלח את הטקסט שלך כעת.',
+    'French': '✅ Correction en français activée. Envoyez votre texte.',
+    'Spanish': '✅ Corrección en español activada. Envía tu texto.'
+}
+
 @app.route('/', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'POST':
@@ -39,7 +51,6 @@ def start(message):
     uid = message.from_user.id
     user_data[uid] = {'lang': 'Arabic', 'lang_name': 'العربية 🇪🇬', 'count': 0}
     
-    # إنشاء لوحة الأزرار بشكل ثنائي منظم
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     buttons = [telebot.types.KeyboardButton(lang) for lang in LANGUAGES.keys()]
     markup.add(*buttons)
@@ -60,18 +71,18 @@ def set_lang(message):
     user_data[uid]['lang'] = selected_lang
     user_data[uid]['lang_name'] = message.text
     
-    bot.reply_to(message, f"✅ تم تفعيل التدقيق للغة: {message.text}\nأرسل النص الآن وسأقوم بتصحيحه فوراً.")
+    # اختيار رسالة التأكيد حسب اللغة المختارة
+    confirm_text = CONFIRM_MESSAGES.get(selected_lang, f"✅ Activated: {message.text}")
+    bot.reply_to(message, confirm_text)
 
 @bot.message_handler(func=lambda m: True)
 def handle_ai_logic(message):
     uid = message.from_user.id
-    # تأمين في حال أرسل المستخدم رسالة قبل الضغط على start
     if uid not in user_data: 
         user_data[uid] = {'lang': 'Arabic', 'lang_name': 'العربية 🇪🇬', 'count': 0}
     
     words = len(message.text.split())
     
-    # التحقق من العداد (20 كلمة)
     if user_data[uid]['count'] >= 20:
         contact_msg = (
             "⚠️ عذراً، لقد انتهت الفترة المجانية.\n\n"
@@ -86,10 +97,7 @@ def handle_ai_logic(message):
     lang = user_data[uid]['lang']
 
     try:
-        # إظهار حالة "يكتب..." للمستخدم
         bot.send_chat_action(message.chat.id, 'typing')
-        
-        # البرومبت الذكي الذي يوجه Gemini حسب اللغة المختارة
         prompt = f"You are a professional proofreader. Correct any grammatical, spelling, and punctuation errors in the following text. The text is in {lang}. Rewrite it correctly in {lang} without any extra explanation or formatting. Text: {message.text}"
         
         response = model.generate_content(prompt)
@@ -99,5 +107,4 @@ def handle_ai_logic(message):
         bot.reply_to(message, reply)
         
     except Exception as e:
-        bot.reply_to(message, "⏳ عذراً، محرك الذكاء الاصطناعي مشغول حالياً. حاول إرسال النص ثانية بعد قليل.")
-        print(f"Error: {e}")
+        bot.reply_to(message, "⏳ عذراً، محرك الذكاء الاصطناعي مشغول حالياً. حاول ثانية.")
