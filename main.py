@@ -1,13 +1,14 @@
 import telebot
 import requests
-import json
+from flask import Flask, request
 
-# --- الإعدادات النهائية (المفتاح الجديد) ---
+# --- الإعدادات ---
 TELEGRAM_TOKEN = '8703815623:AAHCNxFc6zYLTV6Qgcc0HOmKmVDKqkGjlR4'
 GEMINI_KEY = 'AIzaSyDH7pZmRT1LWc4oDepiOKYF8Q5YXxvU_28'
 MODEL_NAME = "gemini-1.5-flash"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
+app = Flask(__name__) # هذا هو المتغير الذي طلبه Vercel
 user_data = {}
 LANGUAGES = {'العربية 🇪🇬': 'Arabic', 'English 🇺🇸': 'English', 'Français 🇫🇷': 'French'}
 
@@ -20,19 +21,28 @@ def ask_gemini_api(text, lang):
     except:
         return "⚠️ حدث خطأ في الاتصال بمحرك جوجل."
 
+# --- جزء الـ Webhook الخاص بـ Vercel ---
+@app.route('/', methods=['POST', 'GET'])
+def webhook():
+    if request.method == 'POST':
+        update = telebot.types.Update.de_json(request.get_data().decode('utf-8'))
+        bot.process_new_updates([update])
+        return "OK", 200
+    return "Bot is Active!", 200
+
 @bot.message_handler(commands=['start'])
 def start(message):
     uid = message.from_user.id
-    user_data[uid] = {'lang': 'Arabic', 'lang_name': 'العربية 🇪🇬', 'count': 0}
+    user_data[uid] = {'lang': 'Arabic', 'count': 0}
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(*[telebot.types.KeyboardButton(l) for l in LANGUAGES.keys()])
-    bot.reply_to(message, "أهلاً بك يا أحمد! اختر لغة التدقيق:", reply_markup=markup)
+    bot.reply_to(message, "أهلاً بك يا أحمد! اختر لغة التدقيق من الأسفل:", reply_markup=markup)
 
 @bot.message_handler(func=lambda m: m.text in LANGUAGES.keys())
 def set_lang(message):
     uid = message.from_user.id
+    if uid not in user_data: user_data[uid] = {'count': 0}
     user_data[uid]['lang'] = LANGUAGES[message.text]
-    user_data[uid]['lang_name'] = message.text
     bot.reply_to(message, f"✅ تم تفعيل: {message.text}")
 
 @bot.message_handler(func=lambda m: True)
@@ -40,7 +50,6 @@ def handle_text(message):
     uid = message.from_user.id
     if uid not in user_data: user_data[uid] = {'lang': 'Arabic', 'count': 0}
     
-    # نظام الـ 20 كلمة
     if user_data[uid]['count'] >= 20:
         bot.reply_to(message, "⚠️ انتهت الفترة المجانية (20 كلمة). تواصل مع @orna0921")
         return
@@ -50,7 +59,8 @@ def handle_text(message):
     user_data[uid]['count'] += len(message.text.split())
     bot.reply_to(message, f"✨ النتيجة:\n\n{result}\n\n📊 استهلاكك: ({user_data[uid]['count']}/20)")
 
+# --- للتشغيل في Termux ---
 if __name__ == "__main__":
     bot.remove_webhook()
-    print("🚀 البوت يعمل بالنسخة الخفيفة داخل my_bot_project...")
+    print("🚀 البوت يعمل الآن في Termux...")
     bot.polling(none_stop=True)
