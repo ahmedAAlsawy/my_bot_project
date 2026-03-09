@@ -2,9 +2,10 @@ import telebot
 import requests
 from flask import Flask, request
 
-# --- الإعدادات (تأكد من صحتها) ---
+# --- الإعدادات (تأكد من بقاء التوكن والمفتاح كما هما) ---
 TELEGRAM_TOKEN = '8703815623:AAHCNxFc6zYLTV6Qgcc0HOmKmVDKqkGjlR4'
 GEMINI_KEY = 'AIzaSyDH7pZmRT1LWc4oDepiOKYF8Q5YXxvU_28'
+# التحديث: استخدام المسمى الأكثر استقراراً
 MODEL_NAME = "gemini-1.5-flash"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
@@ -22,9 +23,13 @@ LANG_CONFIG = {
 }
 
 def ask_ai_api(text, lang):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_KEY}"
+    # التحديث: الانتقال إلى v1 بدلاً من v1beta لحل مشكلة الـ 404
+    url = f"https://generativelanguage.googleapis.com/v1/models/{MODEL_NAME}:generateContent?key={GEMINI_KEY}"
+    
     payload = {
-        "contents": [{"parts": [{"text": f"Correct this {lang} text: {text}"}]}]
+        "contents": [{
+            "parts": [{"text": f"Correct all errors in the following {lang} text and return ONLY the result: {text}"}]
+        }]
     }
     headers = {'Content-Type': 'application/json'}
     
@@ -32,29 +37,27 @@ def ask_ai_api(text, lang):
         response = requests.post(url, json=payload, headers=headers, timeout=20)
         res_json = response.json()
         
-        # 1. حالة النجاح
+        # حالة النجاح
         if response.status_code == 200 and 'candidates' in res_json:
             return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
         
-        # 2. تحليل الأخطاء (Diagnostic Mode)
+        # تحليل الأخطاء بدقة (Diagnostic Mode)
         status = response.status_code
-        error_msg = res_json.get('error', {}).get('message', 'خطأ غير معروف')
+        error_info = res_json.get('error', {})
+        error_msg = error_info.get('message', 'خطأ غير معروف')
+        error_status = error_info.get('status', 'UNKNOWN')
         
-        if status == 400:
-            return f"❌ خطأ برمج في الطلب (400): غالباً النص طويل جداً أو التنسيق خاطئ."
-        elif status == 401:
-            return f"❌ خطأ في المفتاح (401): المفتاح API Key غير صحيح أو تم حذفه."
+        if status == 404:
+            return f"❌ خطأ (404): الموديل غير مدعوم في هذا الإصدار. جرب تغيير MODEL_NAME إلى gemini-1.5-flash-latest"
         elif status == 403:
-            return f"❌ حظر من جوجل (403): حسابك لا يملك صلاحية لهذا الموديل، أو أن المشروع معطل."
-        elif status == 429:
-            return f"❌ ضغط عالي (429): انتهت الحصة المجانية لهذا اليوم (Quota Exceeded)."
-        elif status == 500 or status == 503:
-            return f"❌ عطل في سيرفرات جوجل (500/503): حاول مرة أخرى بعد قليل."
+            return f"❌ خطأ في الحساب (403): {error_msg}\nتأكد من تفعيل Gemini API في Google AI Studio."
+        elif status == 400:
+            return f"❌ خطأ في البيانات (400): {error_msg}"
         else:
-            return f"❌ خطأ تقني ({status}): {error_msg}"
+            return f"❌ خطأ تقني ({status}): {error_status}\nالرسالة: {error_msg}"
 
     except Exception as e:
-        return f"⚠️ خطأ في الاتصال بالسيرفر: {str(e)}"
+        return f"⚠️ خطأ في الاتصال: {str(e)}"
 
 @app.route('/', methods=['POST', 'GET'])
 def webhook():
@@ -70,7 +73,7 @@ def start(message):
     user_data[uid] = {'lang': 'Arabic', 'count': 0}
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(*[telebot.types.KeyboardButton(l) for l in LANG_CONFIG.keys()])
-    bot.reply_to(message, "🚀 أهلاً بك يا أحمد! اختر اللغة لبدء التدقيق:", reply_markup=markup)
+    bot.reply_to(message, "🚀 أهلاً بك! البوت الآن يعمل بالإصدار المستقر. اختر اللغة:", reply_markup=markup)
 
 @bot.message_handler(func=lambda m: m.text in LANG_CONFIG.keys())
 def set_lang(message):
@@ -84,13 +87,8 @@ def handle_text(message):
     uid = message.from_user.id
     if uid not in user_data: user_data[uid] = {'lang': 'Arabic', 'count': 0}
     
-    if user_data[uid]['count'] >= 50: # رفعنا الحد قليلاً للتجربة
-        bot.reply_to(message, "⚠️ انتهت الفترة المجانية.")
-        return
-
     bot.send_chat_action(message.chat.id, 'typing')
     result = ask_ai_api(message.text, user_data[uid]['lang'])
-    user_data[uid]['count'] += len(message.text.split())
     bot.reply_to(message, f"✨ النتيجة:\n\n{result}")
 
 if __name__ == "__main__":
