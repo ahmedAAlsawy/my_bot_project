@@ -5,46 +5,46 @@ from flask import Flask, request
 # --- الإعدادات ---
 TELEGRAM_TOKEN = '8703815623:AAHCNxFc6zYLTV6Qgcc0HOmKmVDKqkGjlR4'
 AI_KEY = 'AIzaSyDQbVmbXjy43DtWQsS6kc5FH9ICSZzc0Sg'
-# المسمى الدقيق الذي تطلبه جوجل الآن
-MODEL_NAME = "gemini-1.5-flash-latest"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 app = Flask(__name__)
 user_data = {}
 
-LANG_CONFIG = {
-    'العربية 🇪🇬': {'name': 'Arabic', 'msg': '✅ تم تفعيل التدقيق بالعربية.'},
-    'English 🇺🇸': {'name': 'English', 'msg': '✅ English enabled.'},
-    'Русский 🇷🇺': {'name': 'Russian', 'msg': '✅ Проверка включена.'},
-    '中文 🇨🇳': {'name': 'Chinese', 'msg': '✅ 中文校对已启用.'},
-    'עברית 🇮🇱': {'name': 'Hebrew', 'msg': '✅ בדיקת עברית הופעלה.'},
-    'فارسی 🇮🇷': {'name': 'Persian', 'msg': '✅ ویرایش فارسی فعال شد.'},
-    'Français 🇫🇷': {'name': 'French', 'msg': '✅ Correction française activée.'}
-}
-
 def ask_ai_api(text, lang):
-    # التعديل الأهم: استخدام v1 بدلاً من v1beta
-    url = f"https://generativelanguage.googleapis.com/v1/models/{MODEL_NAME}:generateContent?key={AI_KEY}"
+    # مصفوفة المسارات المحتملة (سنختبرها واحداً تلو الآخر حتى ينجح أحدها)
+    trials = [
+        {"url": "v1beta", "model": "gemini-1.5-flash"},
+        {"url": "v1", "model": "gemini-1.5-flash"},
+        {"url": "v1beta", "model": "gemini-pro"}
+    ]
     
-    payload = {
-        "contents": [{
-            "parts": [{"text": f"Correct all errors in the following {lang} text and return ONLY the result: {text}"}]
-        }]
-    }
-    headers = {'Content-Type': 'application/json'}
+    last_error = ""
     
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=25)
-        res_json = response.json()
+    for trial in trials:
+        api_version = trial["url"]
+        model = trial["model"]
+        endpoint = f"https://generativelanguage.googleapis.com/{api_version}/models/{model}:generateContent?key={AI_KEY}"
         
-        if response.status_code == 200 and 'candidates' in res_json:
-            return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+        payload = {
+            "contents": [{"parts": [{"text": f"Correct this {lang} text: {text}"}]}]
+        }
+        headers = {'Content-Type': 'application/json'}
         
-        error_info = res_json.get('error', {})
-        return f"❌ خطأ ({response.status_code}): {error_info.get('message', 'خطأ غير معروف')}"
+        try:
+            response = requests.post(endpoint, json=payload, headers=headers, timeout=10)
+            res_json = response.json()
+            
+            if response.status_code == 200 and 'candidates' in res_json:
+                return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+            
+            # إذا فشل المسار، نحفظ الخطأ وننتقل للتالي
+            last_error = res_json.get('error', {}).get('message', 'Unknown error')
+        except Exception as e:
+            last_error = str(e)
+            continue
 
-    except Exception as e:
-        return f"⚠️ خطأ في الاتصال: {str(e)}"
+    # إذا فشلت كل المحاولات، يظهر هذا الرد التفصيلي
+    return f"❌ فشلت جميع المسارات.\nآخر خطأ: {last_error}\nنصيحة: تأكد من تفعيل (Generative Language API) في لوحة تحكم جوجل."
 
 @app.route('/', methods=['POST', 'GET'])
 def webhook():
@@ -56,26 +56,13 @@ def webhook():
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    uid = message.from_user.id
-    user_data[uid] = {'lang': 'Arabic', 'count': 0}
-    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(*[telebot.types.KeyboardButton(l) for l in LANG_CONFIG.keys()])
-    bot.reply_to(message, "🚀 أهلاً بك! تم التحديث للإصدار المستقر. اختر لغة التدقيق:", reply_markup=markup)
-
-@bot.message_handler(func=lambda m: m.text in LANG_CONFIG.keys())
-def set_lang(message):
-    uid = message.from_user.id
-    if uid not in user_data: user_data[uid] = {'count': 0}
-    user_data[uid]['lang'] = LANG_CONFIG[message.text]['name']
-    bot.reply_to(message, LANG_CONFIG[message.text]['msg'])
+    bot.reply_to(message, "🚀 نظام التدقيق المرن يعمل الآن. أرسل نصك وسأحاول معالجته بأكثر من مسار.")
 
 @bot.message_handler(func=lambda m: True)
 def handle_text(message):
-    uid = message.from_user.id
-    if uid not in user_data: user_data[uid] = {'lang': 'Arabic', 'count': 0}
-    
     bot.send_chat_action(message.chat.id, 'typing')
-    result = ask_ai_api(message.text, user_data[uid]['lang'])
+    # تحديد اللغة تلقائياً كـ Arabic مؤقتاً للتجربة
+    result = ask_ai_api(message.text, "Arabic")
     bot.reply_to(message, f"✨ النتيجة:\n\n{result}")
 
 if __name__ == "__main__":
