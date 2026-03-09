@@ -6,35 +6,32 @@ from flask import Flask, request
 # جلب الإعدادات من خزنة Vercel
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 GEMINI_KEY = os.environ.get('GEMINI_KEY')
+# اخترنا الموديل الذي أكد حسابك وجوده في القائمة
+MODEL_NAME = "gemini-2.0-flash"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 app = Flask(__name__)
 
 def ask_ai(text):
-    # قائمة بالاحتمالات التي تقبلها جوجل (سنجربها بالترتيب)
-    endpoints = [
-        {"ver": "v1beta", "mod": "gemini-1.5-flash"},
-        {"ver": "v1", "mod": "gemini-1.5-flash"},
-        {"ver": "v1beta", "mod": "gemini-pro"}
-    ]
+    # استخدام المسار v1beta لأنه الأكثر توافقاً مع الموديلات الحديثة في قائمتك
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_KEY}"
     
-    last_error = ""
-    for point in endpoints:
-        url = f"https://generativelanguage.googleapis.com/{point['ver']}/models/{point['mod']}:generateContent?key={GEMINI_KEY}"
-        payload = {"contents": [{"parts": [{"text": f"Correct this Arabic text and return ONLY the result: {text}"}]}]}
+    payload = {
+        "contents": [{
+            "parts": [{"text": f"Correct all spelling and grammar errors in this Arabic text and return ONLY the corrected text: {text}"}]
+        }]
+    }
+    
+    try:
+        response = requests.post(url, json=payload, timeout=20)
+        res_json = response.json()
         
-        try:
-            response = requests.post(url, json=payload, timeout=10)
-            res_json = response.json()
-            
-            if response.status_code == 200:
-                return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
-            
-            last_error = res_json.get('error', {}).get('message', 'Unknown error')
-        except:
-            continue
-            
-    return f"❌ لم نجد مساراً صالحاً.\nآخر رد من جوجل: {last_error}"
+        if response.status_code == 200:
+            return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+        else:
+            return f"❌ خطأ تقني: {res_json.get('error', {}).get('message', 'يرجى المحاولة لاحقاً')}"
+    except Exception as e:
+        return f"⚠️ خطأ اتصال: {str(e)}"
 
 @app.route('/', methods=['POST', 'GET'])
 def webhook():
@@ -42,21 +39,11 @@ def webhook():
         update = telebot.types.Update.de_json(request.get_data().decode('utf-8'))
         bot.process_new_updates([update])
         return "OK", 200
-    return "Bot is Active!", 200
+    return "البوت يعمل بكفاءة!", 200
 
-# أمر جديد لفحص الموديلات المتاحة لمفتاحك "الآن وهو محمي"
-@bot.message_handler(commands=['list'])
-def list_models(message):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_KEY}"
-    try:
-        res = requests.get(url).json()
-        if 'models' in res:
-            names = [m['name'] for m in res['models']]
-            bot.reply_to(message, "✅ الموديلات المتاحة لمفتاحك هي:\n" + "\n".join(names))
-        else:
-            bot.reply_to(message, f"❌ فشل الفحص: {res}")
-    except Exception as e:
-        bot.reply_to(message, f"⚠️ خطأ: {str(e)}")
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.reply_to(message, "✨ أهلاً بك في بوت التدقيق اللغوي الذكي (إصدار Gemini 2.0).\n\nأرسل أي نص الآن وسأقوم بتصحيحه فوراً!")
 
 @bot.message_handler(func=lambda m: True)
 def handle_text(message):
