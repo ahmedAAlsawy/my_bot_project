@@ -6,9 +6,9 @@ import google.generativeai as genai
 TELEGRAM_TOKEN = '8703815623:AAHCNxFc6zYLTV6Qgcc0HOmKmVDKqkGjlR4'
 GEMINI_KEY = 'AIzaSyAxs4q6ZxVWwZcD9WBkkZBYHlbRHaJdi7k'
 
-# تهيئة الذكاء الاصطناعي مع المسار الصحيح لتجنب خطأ 404
+# تهيئة الذكاء الاصطناعي - الإصدار المستقر 0.8.3 يتعرف على المسار تلقائياً
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('models/gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 app = Flask(__name__)
@@ -26,7 +26,7 @@ LANGUAGES = {
     'Español 🇪🇸': 'Spanish'
 }
 
-# رسائل التأكيد باللغات المختلفة
+# رسائل التأكيد باللغات المختلفة لضمان تجربة مستخدم عالمية
 CONFIRM_MESSAGES = {
     'Arabic': '✅ تم تفعيل التدقيق للغة العربية. أرسل النص الآن.',
     'English': '✅ English proofreading activated. Send your text now.',
@@ -44,7 +44,7 @@ def webhook():
         update = telebot.types.Update.de_json(request.get_data().decode('utf-8'))
         bot.process_new_updates([update])
         return "OK", 200
-    return "Bot is Active!", 200
+    return "Bot is Active and Ready!", 200
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -56,7 +56,7 @@ def start(message):
     markup.add(*buttons)
     
     welcome_text = (
-        "أهلاً بك! أنا مساعدك اللغوي الذكي 🤖\n\n"
+        "أهلاً بك في غرفة التدقيق اللغوي الذكي 🤖\n\n"
         "أقوم بتصحيح الأخطاء وإعادة صياغة الجمل باحترافية.\n"
         "اختر لغة التدقيق من القائمة بالأسفل لتبدأ:"
     )
@@ -71,6 +71,7 @@ def set_lang(message):
     user_data[uid]['lang'] = selected_lang
     user_data[uid]['lang_name'] = message.text
     
+    # الرد بنفس اللغة المختارة
     confirm_text = CONFIRM_MESSAGES.get(selected_lang, f"✅ Activated: {message.text}")
     bot.reply_to(message, confirm_text)
 
@@ -82,7 +83,7 @@ def handle_ai_logic(message):
     
     words = len(message.text.split())
     
-    # التحقق من الحد المجاني (20 كلمة)
+    # حماية الاشتراك المجاني
     if user_data[uid]['count'] >= 20:
         contact_msg = (
             "⚠️ عذراً، لقد انتهت الفترة المجانية.\n\n"
@@ -98,18 +99,17 @@ def handle_ai_logic(message):
     try:
         bot.send_chat_action(message.chat.id, 'typing')
         
-        # برومبت احترافي يضمن عدم وجود شرح أو هوامش
-        prompt = f"Act as a professional proofreader. Correct all grammatical, spelling, and punctuation errors in the following text in {lang}. Return ONLY the corrected text without any introduction or additional notes: {message.text}"
+        # برومبت دقيق جداً للحصول على النتيجة الصافية
+        prompt = f"Professional Proofreader: Correct grammar/spelling in {lang}. Return ONLY corrected text: {message.text}"
         
         response = model.generate_content(prompt)
         corrected_text = response.text.strip()
         
-        # تحديث عداد الكلمات
         user_data[uid]['count'] += words
         
         reply = f"✨ التدقيق الذكي ({user_data[uid]['lang_name']}):\n\n{corrected_text}\n\n📊 استهلاكك: ({user_data[uid]['count']}/20 كلمة)"
         bot.reply_to(message, reply)
         
     except Exception as e:
-        # رسالة الخطأ التقني المحددة
-        bot.reply_to(message, f"⏳ عذراً، حدث خطأ في محرك الذكاء الاصطناعي:\n`{str(e)}`", parse_mode="Markdown")
+        # إظهار الخطأ التقني بدقة للمطور
+        bot.reply_to(message, f"⏳ خطأ في محرك الذكاء الاصطناعي:\n`{str(e)}`", parse_mode="Markdown")
