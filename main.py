@@ -8,43 +8,32 @@ AI_KEY = 'AIzaSyDQbVmbXjy43DtWQsS6kc5FH9ICSZzc0Sg'
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 app = Flask(__name__)
-user_data = {}
 
-def ask_ai_api(text, lang):
-    # مصفوفة المسارات المحتملة (سنختبرها واحداً تلو الآخر حتى ينجح أحدها)
-    trials = [
-        {"url": "v1beta", "model": "gemini-1.5-flash"},
-        {"url": "v1", "model": "gemini-1.5-flash"},
-        {"url": "v1beta", "model": "gemini-pro"}
-    ]
-    
-    last_error = ""
-    
-    for trial in trials:
-        api_version = trial["url"]
-        model = trial["model"]
-        endpoint = f"https://generativelanguage.googleapis.com/{api_version}/models/{model}:generateContent?key={AI_KEY}"
-        
-        payload = {
-            "contents": [{"parts": [{"text": f"Correct this {lang} text: {text}"}]}]
-        }
-        headers = {'Content-Type': 'application/json'}
-        
-        try:
-            response = requests.post(endpoint, json=payload, headers=headers, timeout=10)
-            res_json = response.json()
-            
-            if response.status_code == 200 and 'candidates' in res_json:
-                return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
-            
-            # إذا فشل المسار، نحفظ الخطأ وننتقل للتالي
-            last_error = res_json.get('error', {}).get('message', 'Unknown error')
-        except Exception as e:
-            last_error = str(e)
-            continue
+# دالة لجلب الموديلات المتاحة فعلياً لحسابك
+def get_available_models():
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={AI_KEY}"
+    try:
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        if 'models' in data:
+            # سنستخرج الأسماء فقط لنعرضها لك
+            return "\n".join([m['name'] for m in data['models']])
+        return f"❌ لم نجد موديلات. الرد: {data}"
+    except Exception as e:
+        return f"⚠️ خطأ في الجلب: {str(e)}"
 
-    # إذا فشلت كل المحاولات، يظهر هذا الرد التفصيلي
-    return f"❌ فشلت جميع المسارات.\nآخر خطأ: {last_error}\nنصيحة: تأكد من تفعيل (Generative Language API) في لوحة تحكم جوجل."
+def ask_ai(text):
+    # سنحاول استخدام هذا الاسم الافتراضي
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={AI_KEY}"
+    payload = {"contents": [{"parts": [{"text": text}]}]}
+    try:
+        response = requests.post(url, json=payload, timeout=15)
+        res_json = response.json()
+        if response.status_code == 200:
+            return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+        return f"❌ خطأ {response.status_code}: {res_json.get('error', {}).get('message', 'Unknown')}"
+    except Exception as e:
+        return f"⚠️ خطأ اتصال: {str(e)}"
 
 @app.route('/', methods=['POST', 'GET'])
 def webhook():
@@ -54,16 +43,17 @@ def webhook():
         return "OK", 200
     return "Bot is Active!", 200
 
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "🚀 نظام التدقيق المرن يعمل الآن. أرسل نصك وسأحاول معالجته بأكثر من مسار.")
+@bot.message_handler(commands=['list'])
+def list_models_command(message):
+    bot.reply_to(message, "🔍 جاري فحص الموديلات المتاحة في حسابك...")
+    models = get_available_models()
+    bot.reply_to(message, f"📋 الموديلات المتاحة لك هي:\n\n{models}")
 
 @bot.message_handler(func=lambda m: True)
 def handle_text(message):
     bot.send_chat_action(message.chat.id, 'typing')
-    # تحديد اللغة تلقائياً كـ Arabic مؤقتاً للتجربة
-    result = ask_ai_api(message.text, "Arabic")
-    bot.reply_to(message, f"✨ النتيجة:\n\n{result}")
+    result = ask_ai(message.text)
+    bot.reply_to(message, f"✨ النتيجة:\n\n{result}\n\n💡 أرسل /list لمعرفة الموديلات المتاحة.")
 
 if __name__ == "__main__":
     bot.remove_webhook()
