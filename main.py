@@ -4,9 +4,9 @@ from flask import Flask, request
 
 # --- الإعدادات ---
 TELEGRAM_TOKEN = '8703815623:AAHCNxFc6zYLTV6Qgcc0HOmKmVDKqkGjlR4'
-# المفتاح الجديد الذي أرسلته
 AI_KEY = 'AIzaSyDQbVmbXjy43DtWQsS6kc5FH9ICSZzc0Sg'
-MODEL_NAME = "gemini-1.5-flash"
+# المسمى الدقيق الذي تطلبه جوجل الآن
+MODEL_NAME = "gemini-1.5-flash-latest"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 app = Flask(__name__)
@@ -23,8 +23,8 @@ LANG_CONFIG = {
 }
 
 def ask_ai_api(text, lang):
-    # عدنا للرابط القياسي الذي سيعمل فوراً مع المفتاح الجديد
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={AI_KEY}"
+    # التعديل الأهم: استخدام v1 بدلاً من v1beta
+    url = f"https://generativelanguage.googleapis.com/v1/models/{MODEL_NAME}:generateContent?key={AI_KEY}"
     
     payload = {
         "contents": [{
@@ -60,7 +60,7 @@ def start(message):
     user_data[uid] = {'lang': 'Arabic', 'count': 0}
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(*[telebot.types.KeyboardButton(l) for l in LANG_CONFIG.keys()])
-    bot.reply_to(message, "🚀 أهلاً بك! تم تفعيل المفتاح الجديد. اختر لغة التدقيق:", reply_markup=markup)
+    bot.reply_to(message, "🚀 أهلاً بك! تم التحديث للإصدار المستقر. اختر لغة التدقيق:", reply_markup=markup)
 
 @bot.message_handler(func=lambda m: m.text in LANG_CONFIG.keys())
 def set_lang(message):
