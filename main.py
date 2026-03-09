@@ -2,11 +2,11 @@ import telebot
 import requests
 from flask import Flask, request
 
-# --- الإعدادات (تأكد من بقاء التوكن والمفتاح كما هما) ---
+# --- الإعدادات ---
 TELEGRAM_TOKEN = '8703815623:AAHCNxFc6zYLTV6Qgcc0HOmKmVDKqkGjlR4'
 GEMINI_KEY = 'AIzaSyDH7pZmRT1LWc4oDepiOKYF8Q5YXxvU_28'
-# التحديث: استخدام المسمى الأكثر استقراراً
-MODEL_NAME = "gemini-1.5-flash"
+# التعديل الجوهري: إضافة -latest كما طلبت جوجل في رسالة الخطأ
+MODEL_NAME = "gemini-1.5-flash-latest"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 app = Flask(__name__)
@@ -23,7 +23,7 @@ LANG_CONFIG = {
 }
 
 def ask_ai_api(text, lang):
-    # التحديث: الانتقال إلى v1 بدلاً من v1beta لحل مشكلة الـ 404
+    # استخدام v1 المستقر مع الموديل الأحدث
     url = f"https://generativelanguage.googleapis.com/v1/models/{MODEL_NAME}:generateContent?key={GEMINI_KEY}"
     
     payload = {
@@ -34,27 +34,15 @@ def ask_ai_api(text, lang):
     headers = {'Content-Type': 'application/json'}
     
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=20)
+        response = requests.post(url, json=payload, headers=headers, timeout=25)
         res_json = response.json()
         
-        # حالة النجاح
         if response.status_code == 200 and 'candidates' in res_json:
             return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
         
-        # تحليل الأخطاء بدقة (Diagnostic Mode)
-        status = response.status_code
+        # في حال استمرار الخطأ، سنعرض التفاصيل الكاملة
         error_info = res_json.get('error', {})
-        error_msg = error_info.get('message', 'خطأ غير معروف')
-        error_status = error_info.get('status', 'UNKNOWN')
-        
-        if status == 404:
-            return f"❌ خطأ (404): الموديل غير مدعوم في هذا الإصدار. جرب تغيير MODEL_NAME إلى gemini-1.5-flash-latest"
-        elif status == 403:
-            return f"❌ خطأ في الحساب (403): {error_msg}\nتأكد من تفعيل Gemini API في Google AI Studio."
-        elif status == 400:
-            return f"❌ خطأ في البيانات (400): {error_msg}"
-        else:
-            return f"❌ خطأ تقني ({status}): {error_status}\nالرسالة: {error_msg}"
+        return f"❌ خطأ ({response.status_code}): {error_info.get('message', 'خطأ غير معروف')}"
 
     except Exception as e:
         return f"⚠️ خطأ في الاتصال: {str(e)}"
@@ -73,7 +61,7 @@ def start(message):
     user_data[uid] = {'lang': 'Arabic', 'count': 0}
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(*[telebot.types.KeyboardButton(l) for l in LANG_CONFIG.keys()])
-    bot.reply_to(message, "🚀 أهلاً بك! البوت الآن يعمل بالإصدار المستقر. اختر اللغة:", reply_markup=markup)
+    bot.reply_to(message, "🚀 تم تحديث النظام للموديل الأحدث! اختر اللغة:", reply_markup=markup)
 
 @bot.message_handler(func=lambda m: m.text in LANG_CONFIG.keys())
 def set_lang(message):
