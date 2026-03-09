@@ -6,9 +6,9 @@ import google.generativeai as genai
 TELEGRAM_TOKEN = '8703815623:AAHCNxFc6zYLTV6Qgcc0HOmKmVDKqkGjlR4'
 GEMINI_KEY = 'AIzaSyAxs4q6ZxVWwZcD9WBkkZBYHlbRHaJdi7k'
 
-# تهيئة الذكاء الاصطناعي
+# تهيئة الذكاء الاصطناعي مع المسار الصحيح لتجنب خطأ 404
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('models/gemini-1.5-flash')
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 app = Flask(__name__)
@@ -32,7 +32,7 @@ CONFIRM_MESSAGES = {
     'English': '✅ English proofreading activated. Send your text now.',
     'Russian': '✅ Проверка русского языка активирована. Отправьте текст.',
     'Hindi': '✅ हिंदी सुधार सक्रिय हो गया है। अपना टेक्स्ट भेजें।',
-    'Chinese': '✅ 中文校校对已激活。请发送您的文本。',
+    'Chinese': '✅ 中文校对已激活。请发送您的文本。',
     'Hebrew': '✅ בדיקת עברית הופעלה. שלח את הטקסט שלך כעת.',
     'French': '✅ Correction en français activée. Envoyez votre texte.',
     'Spanish': '✅ Corrección en español activada. Envía tu texto.'
@@ -82,7 +82,7 @@ def handle_ai_logic(message):
     
     words = len(message.text.split())
     
-    # التحقق من الحد المجاني
+    # التحقق من الحد المجاني (20 كلمة)
     if user_data[uid]['count'] >= 20:
         contact_msg = (
             "⚠️ عذراً، لقد انتهت الفترة المجانية.\n\n"
@@ -98,18 +98,18 @@ def handle_ai_logic(message):
     try:
         bot.send_chat_action(message.chat.id, 'typing')
         
-        prompt = f"You are a professional proofreader. Correct grammatical, spelling, and punctuation errors in the following text in {lang}. Return ONLY the corrected text without explanations: {message.text}"
+        # برومبت احترافي يضمن عدم وجود شرح أو هوامش
+        prompt = f"Act as a professional proofreader. Correct all grammatical, spelling, and punctuation errors in the following text in {lang}. Return ONLY the corrected text without any introduction or additional notes: {message.text}"
         
         response = model.generate_content(prompt)
         corrected_text = response.text.strip()
         
-        # تحديث العداد فقط بعد نجاح العملية
+        # تحديث عداد الكلمات
         user_data[uid]['count'] += words
         
         reply = f"✨ التدقيق الذكي ({user_data[uid]['lang_name']}):\n\n{corrected_text}\n\n📊 استهلاكك: ({user_data[uid]['count']}/20 كلمة)"
         bot.reply_to(message, reply)
         
     except Exception as e:
-        # رسالة تخبرك بنوع الخطأ بالضبط لحل المشكلة
-        error_msg = f"⏳ حدث خطأ في الاتصال بالمحرك:\n`{str(e)}`"
-        bot.reply_to(message, error_msg, parse_mode="Markdown")
+        # رسالة الخطأ التقني المحددة
+        bot.reply_to(message, f"⏳ عذراً، حدث خطأ في محرك الذكاء الاصطناعي:\n`{str(e)}`", parse_mode="Markdown")
